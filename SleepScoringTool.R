@@ -7,13 +7,14 @@ start_time <- Sys.time()
 #being each row.
 #The last column for each row should denote either a "0" for Wake, 
 #a "1" for Nonrem and a "2" for REM epochs. 
-#It is crucial that this column is the final one in the dataset.
+#It is crucial that this column is either the final one in the dataset or it's own csv file (see below)
 #Unscored epochs can be left blank within the "Score" column.
 
 #Example of a file path: "/Users/YOURNAME/desktop/YOURFILE.csv"
 file_path1_eeg <- "/Users/jacobellen/desktop/eeg1exampledata.csv"
 file_path2_eeg <- "/Users/jacobellen/desktop/eeg2exampledata.csv" #NOTE: If not using two eeg files, there is no need to change this line,
 #but you must change the eeg_answer argument below to "One."
+
 
 #File Path of the EMG File
 #This file should also be a csv file
@@ -22,12 +23,34 @@ file_path_emg <- "/Users/jacobellen/desktop/emgexampledata.csv"
 #File Path of the Output CSV File With All of the Predictions
 final_outputpath <- "/Users/jacobellen/desktop/finaloutput.csv"
 
+
+
 #OPTIONAL TUNING PARAMETERS:
+
+#ONE VS TWO EEGs
 
 #Would you like to use one or two EEGs?
 #If the user would only like to use one EEG, replace "Two" with "One" below
 eeg_answer <- "Two"
 
+
+#OPTION TO INPUT EACH EEG AND EMG DATASET AS ONE LONG VECTOR AND SUBMIT SCORING DATA 
+#IN A SEPARATE CSV FILE
+
+#If you would like to input the EEG1, EEG2 and EMG datasets as long vector rather than in rows
+#and columns (but still in a csv file), you can answer "Yes" below. 
+
+#In this case, you need to put the paths of .csv files that are just one long column for each
+#in the EEG1, EEG2 and EMG file path arguments above.
+vectorinput <- "No"
+numberofdatapointsperepoch <- 1000
+#In this case, you need to upload your Scoring file column as a separate file. This file should
+#in a .csv and the spreadsheet will just be one column (with some scored epochs, but mostly empty)
+scoringcolumn_filepath <- ""
+
+
+
+#EXTRACTING PROCESSED FILE
 
 #If you would like to get a copy of the frequency-domain data in csv form, input "Yes" below 
 #along with a file name and path to output it.
@@ -35,7 +58,7 @@ eeg_answer <- "Two"
 frequency_answer <- "No"
 file_output_path <- "/Users/YOURNAME/desktop/spectraldata.csv" #Example file path
 
-preprocessing <- "No"
+
 
 #SCRIPT 
 #Loading the packages required for this task
@@ -62,17 +85,30 @@ library(tibble)
 #Performing Spectral Analysis on First EEG Data
 eeg1 <- fread(file_path1_eeg)
 eeg1 <- as.data.frame(eeg1)
+#eeg1 <- eeg1[1:20000,1:600]
 if(eeg1[1,1]==1 & eeg1[2,1] ==2) {
   eeg1 <- eeg1[, -1]
 }
 
+scoringcolumn <- ""
+if (vectorinput=="Yes") {
+  eeg1 <- as.matrix(eeg1)
+  eeg1 <- t(eeg1)
+  num <- length(eeg1)/numberofdatapointsperepoch
+  eeg1 <- matrix(eeg1, num, numberofdatapointsperepoch, byrow = T)
+  eeg1 <- as.data.frame(eeg1)
+  scoringcolumn <- "separate"
+}
+
 original.order <- eeg1 %>% mutate(index=(1:nrow(eeg1)))
 
-if (preprocessing=="Yes") {
-eeg1 <- as.matrix(eeg1)
-eeg1 <- t(eeg1)
-num <- length(eeg1)/1000
-eeg1 <- matrix(eeg1, num, 1000, byrow = T)
+if (scoringcolumn == "separate") {
+  Score <- fread(scoringcolumn_filepath)
+  Score <- as.matrix(Score)
+  addnas <- nrow(eeg1) - dim(Score)[1]
+  addna.vec <- as.matrix(rep(NA, addnas))
+  preds <- c(Score, addna.vec)
+  eeg1 <- as.data.frame(cbind(eeg1,preds))
 }
 
 Score <- eeg1[1:nrow(eeg1), ncol(eeg1)]
@@ -82,12 +118,12 @@ if (is.data.frame(eeg1)==TRUE) {
 eeg1 <- as.matrix(eeg1)
 }
 
-#IS THIS 125 CORRECT!!!?
 fs <- matrix(0, nrow(eeg1), 125)
 for (x in 1:nrow(eeg1)) {
   print(paste0("Processing First EEG Data", x))
   spectrum3 <- oce::pwelch(eeg1[x,], points = ncol(eeg1), plot=FALSE)
-  fs[x,] <- spectrum3$spec 
+  length(spectrum3$spec)
+  fs[x,(1:length(spectrum3$spec))] <- spectrum3$spec 
 }
 
 
@@ -99,18 +135,16 @@ eeg2 <- as.data.frame(eeg2)
 if(eeg2[1,1]==1 & eeg2[2,1] ==2) {
   eeg2 <- eeg2[, -1]
 }
-#sep2 <- str_sub(file_path2_eeg, start=1, end=(nchar(i)-4))
+
+  if (vectorinput=="Yes") {
+    eeg2 <- as.matrix(eeg2)
+    eeg2 <- t(eeg2)
+    num2 <- length(eeg2)/numberofdatapointsperepoch
+    eeg2 <- matrix(eeg2, num, numberofdatapointsperepoch, byrow = T)
+    eeg2 <- as.data.frame(eeg2)
+  }
 
 
-if (preprocessing=="Yes") {
-  eeg2 <- as.matrix(eeg2)
-  eeg2 <- t(eeg2)
-  num2 <- length(eeg2)/1000
-  new2 <- matrix(eeg2, num2, 1000, byrow = T)
-}
-
-#Score <- eeg2[1:nrow(eeg2),ncol(eeg2)]
-#eeg2 <- eeg2[1:nrow(eeg2), 1:(ncol(eeg2)-1)]
 
 if (is.data.frame(eeg2)==TRUE) {
   eeg2 <- as.matrix(eeg2)
@@ -121,10 +155,9 @@ fs2 <- matrix(0, nrow(eeg2), 125)
 for (x in 1:nrow(eeg2)) {
   print(paste0("Processing Second EEG Data", x))
   spectrum3 <- oce::pwelch(eeg2[x,], points = ncol(eeg2), plot=FALSE)
-  fs2[x,] <- spectrum3$spec 
+  fs2[x,(1:length(spectrum3$spec))] <- spectrum3$spec 
 }
 }
-
 
 
 # Feature Extraction from EEGs
@@ -176,12 +209,11 @@ if(emg[1,1]==1 & emg[2,1] ==2) {
   emg <- emg[, -1]
 }
 
-if (preprocessing=="Yes") {
+if (vectorinput=="Yes") {
   emg <- as.matrix(emg)
   emg <- t(emg)
-  emg <- length(emg)/ncol(emg)
-  emg <- matrix(emg,  ncol(emg), byrow = T)
-  #emg <- abs(emg)
+  emg <- length(emg)/numberofdatapointsperepoch
+  emg <- matrix(emg, num, numberofdatapointsperepoch, byrow = T)
 }
 
 RMS <- as.vector(sqrt(abs(rowSums(emg))))
@@ -223,8 +255,7 @@ ml.test <- ml.test %>% column_to_rownames('index')
 
 #Warning produced if less than the training dataset is less than 5% REM or more than 12%
 if (length(which(ml.train$Score=="2"))/(length(ml.train$Score)) < .05) {
-  print("Warning: you have less than 5% REM in your training data, 
-        so you should add more REM to help the algorithm work properly")
+  print("Warning: you have less than 5% REM in your training data, so you should add more REM to help the algorithm work properly")
 }  
 
 ml.train <- as.matrix(ml.train)
@@ -265,7 +296,6 @@ model %>% compile(
 )
 
 for (n in 1:5) {
-
 history <- model %>% fit(
   xtrain, ytrain,
   epochs = 12, batch_size = 10, 
@@ -278,7 +308,7 @@ predictions <- predict_classes(model, xtest) %>% as.vector()
 predictions.matrix[,n] <- predictions
 }
 
-#Averaging Three Runs of the Model
+#Averaging Five Runs of the Model
 class(predictions.matrix) <- "character"
 mode <- function(x) {
   uniqx <- unique(na.omit(x))
@@ -307,6 +337,7 @@ time <- end_time - start_time
 paste0("Script Finished in ", time, " Minutes")
 
 #FOR ME TO CHECK THAT ITS ACTUALLY WORKING
+
 #check <- as.data.frame(cbind(preds,finaloutput$ModelPredictions))
 #check <- na.omit(check)
 #check$V1 <- as.character(check$V1)
