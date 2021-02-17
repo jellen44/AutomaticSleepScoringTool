@@ -28,7 +28,7 @@ final_outputpath <- "/Users/jacobellen/desktop/finaloutput.csv"
 
 
 #Sampling Rate Information
-samplingrate <- 175
+samplingrate <- 250
 #NOTE: The default is 250 Hz, but the script can work effectively with a minimum of 150 Hz and anything larger than 250 Hz
 #The script will not run with sampling rates under 150 Hz
 
